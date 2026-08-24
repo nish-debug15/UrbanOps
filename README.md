@@ -56,13 +56,6 @@ MongoDB       S3    Python AI (stretch)
 - **No ward-boundary WebSocket rooms.** Geohash prefix used instead to avoid a GeoJSON boundary-data dependency.
 - **AI photo masking is stretch scope**, cut first if behind schedule.
 
-# Team
-
-Nishit Patel
-Pragun Lal Shrestha
-Pranav Adhikari
-Sameera Simha J
-Unique Bhakta Shrestha
 ## Team
 
 1RUA24SCS0068 Nishit Patel · 1RUA24SCS0072 Pragun Lal Shrestha · 1RUA24SCS0077 Pranav Adhikari · 1RUA24SCS0118 Unique Bhakta Shrestha
