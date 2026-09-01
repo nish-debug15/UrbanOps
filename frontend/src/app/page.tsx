@@ -1,3 +1,9 @@
+import dynamic from 'next/dynamic';
+
+const LiveMap = dynamic(() => import('./LiveMap'), {
+  ssr: false,
+});
+
 export default function Home() {
   const incidents = [
     {
@@ -159,21 +165,8 @@ export default function Home() {
               </span>
             </div>
 
-            <div className="map">
-              <div className="road road-one" />
-              <div className="road road-two" />
-              <div className="road road-three" />
-
-              <div className="map-marker marker-one">1</div>
-              <div className="map-marker marker-two">2</div>
-              <div className="map-marker marker-three">3</div>
-              <div className="map-marker marker-four">4</div>
-
-              <div className="map-card">
-                <strong>Water leak</strong>
-                <span>8 duplicate reports</span>
-                <b>HIGH PRIORITY</b>
-              </div>
+            <div className="map-container-wrapper" style={{ padding: "0 20px 20px" }}>
+              <LiveMap />
             </div>
           </section>
         </div>
