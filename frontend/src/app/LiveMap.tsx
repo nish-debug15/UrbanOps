@@ -5,18 +5,20 @@ import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
-const createPriorityIcon = (color: string) => {
+const createCivicIcon = (level: 'high' | 'medium' | 'low') => {
+  const pulseHtml = level === 'high' ? '<div class="pulse-ring"></div>' : '';
+  
   return L.divIcon({
-    className: 'custom-marker',
-    html: `<div style="background-color: ${color}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>`,
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
+    className: `civic-marker ${level}`,
+    html: pulseHtml,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
   });
 };
 
-const highPriorityIcon = createPriorityIcon('#ef4444');
-const mediumPriorityIcon = createPriorityIcon('#f59e0b');
-const lowPriorityIcon = createPriorityIcon('#10b981');
+const highPriorityIcon = createCivicIcon('high');
+const mediumPriorityIcon = createCivicIcon('medium');
+const lowPriorityIcon = createCivicIcon('low');
 
 export default function LiveMap() {
   const [isMounted, setIsMounted] = useState(false);
@@ -27,8 +29,8 @@ export default function LiveMap() {
 
   if (!isMounted) {
     return (
-      <div style={{ height: '380px', background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
-        Loading map...
+      <div className="map-wrapper" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span className="mono">Loading geospatial data...</span>
       </div>
     );
   }
@@ -37,31 +39,37 @@ export default function LiveMap() {
   const position: [number, number] = [12.9716, 77.5946]; 
 
   return (
-    <div style={{ height: "380px", width: "100%", borderRadius: "8px", overflow: "hidden" }}>
+    <div className="map-wrapper">
       <MapContainer center={position} zoom={13} style={{ height: "100%", width: "100%" }}>
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          attribution='&copy; <a href="https://carto.com/">Carto</a>'
+          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         />
         <Marker position={[12.9750, 77.6050]} icon={highPriorityIcon}>
           <Popup>
-            <strong>Water leak</strong><br />
-            MG Road, District 04<br />
-            <span style={{ color: "#ef4444", fontWeight: "bold", fontSize: "11px" }}>HIGH PRIORITY (8 reports)</span>
+            <div className="mono" style={{ fontSize: '12px' }}>
+              <strong>[INC-1042] Water leak</strong><br />
+              MG Road, District 04<br />
+              <span style={{ color: "#CC3333", fontWeight: 600 }}>PRIORITY: HIGH (8 reports)</span>
+            </div>
           </Popup>
         </Marker>
         <Marker position={[12.9720, 77.6350]} icon={lowPriorityIcon}>
           <Popup>
-            <strong>Street light</strong><br />
-            Indiranagar, District 02<br />
-            <span style={{ color: "#10b981", fontWeight: "bold", fontSize: "11px" }}>LOW PRIORITY (2 reports)</span>
+            <div className="mono" style={{ fontSize: '12px' }}>
+              <strong>[INC-1039] Street light</strong><br />
+              Indiranagar, District 02<br />
+              <span style={{ color: "#4A7C59", fontWeight: 600 }}>PRIORITY: LOW (2 reports)</span>
+            </div>
           </Popup>
         </Marker>
         <Marker position={[12.9745, 77.6000]} icon={mediumPriorityIcon}>
           <Popup>
-            <strong>Pothole</strong><br />
-            Church Street, District 03<br />
-            <span style={{ color: "#f59e0b", fontWeight: "bold", fontSize: "11px" }}>MEDIUM PRIORITY (3 reports)</span>
+            <div className="mono" style={{ fontSize: '12px' }}>
+              <strong>[INC-1040] Pothole</strong><br />
+              Church Street, District 03<br />
+              <span style={{ color: "#D97706", fontWeight: 600 }}>PRIORITY: MEDIUM (3 reports)</span>
+            </div>
           </Popup>
         </Marker>
       </MapContainer>

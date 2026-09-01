@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 
 const LiveMap = dynamic(() => import('./LiveMap'), {
   ssr: false,
@@ -13,7 +14,7 @@ export default function Home() {
       issue: "Water leak",
       location: "MG Road, District 04",
       reports: 8,
-      priority: "High",
+      severity: "high",
       status: "Unassigned",
     },
     {
@@ -21,23 +22,23 @@ export default function Home() {
       issue: "Road hazard",
       location: "12th Main, District 04",
       reports: 5,
-      priority: "High",
-      status: "Assigned",
+      severity: "high",
+      status: "Assigned: Crew 2",
     },
     {
       id: "INC-1040",
       issue: "Pothole",
       location: "Church Street, District 03",
       reports: 3,
-      priority: "Medium",
-      status: "In progress",
+      severity: "medium",
+      status: "Assigned: Crew 4",
     },
     {
       id: "INC-1039",
       issue: "Street light",
       location: "Indiranagar, District 02",
       reports: 2,
-      priority: "Low",
+      severity: "low",
       status: "Resolved",
     },
   ];
@@ -45,110 +46,91 @@ export default function Home() {
   return (
     <main className="app">
       <aside className="sidebar">
-        <div className="logo">UrbanOps</div>
+        <div className="logo-container">
+          <svg className="logo-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square">
+            {/* Abstracted city grid 'U' */}
+            <path d="M4 4v16h16V4" />
+            <path d="M10 4v16" />
+            <path d="M16 4v16" />
+            <path d="M4 10h16" />
+            <path d="M4 16h16" />
+          </svg>
+          <span className="logo-text">UrbanOps</span>
+        </div>
 
         <nav>
-          <a className="nav-item active" href="#">
-            Dashboard
-          </a>
-          <a className="nav-item" href="#">
-            Incidents
-          </a>
-          <a className="nav-item" href="#">
-            Live Map
-          </a>
-          <a className="nav-item" href="#">
-            Crews
-          </a>
-          <a className="nav-item" href="#">
-            Reports
-          </a>
+          <Link href="#" className="nav-item active">Dashboard</Link>
+          <Link href="#" className="nav-item">Incidents</Link>
+          <Link href="#" className="nav-item">Live Map</Link>
+          <Link href="#" className="nav-item">Crews</Link>
+          <Link href="#" className="nav-item">Reports</Link>
         </nav>
 
         <div className="sidebar-bottom">
-          <div className="user">
-            <div className="avatar">D</div>
-            <div>
-              <strong>Dispatcher</strong>
-              <span>District 04</span>
-            </div>
+          <div className="user-info">
+            <span className="user-name">ID: DISP-804</span>
+            <span className="user-role">Operations / District 04</span>
           </div>
         </div>
       </aside>
 
       <section className="content">
         <header className="topbar">
-          <div>
-            <p className="eyebrow">CITY OPERATIONS</p>
-            <h1>Dashboard</h1>
-          </div>
-
-          <a href="/report" className="report-button">
-  + Report incident
-</a>
+          <h1 className="page-title">Dashboard</h1>
+          <Link href="/report" className="report-button">
+            [+] Report incident
+          </Link>
         </header>
 
         <div className="stats">
-          <div className="stat-card">
-            <span>Active incidents</span>
-            <strong>12</strong>
-            <small>+3 today</small>
+          <div className="stat-block">
+            <span className="stat-label">Active incidents</span>
+            <span className="stat-value">12</span>
           </div>
 
-          <div className="stat-card">
-            <span>High priority</span>
-            <strong>4</strong>
-            <small>Needs attention</small>
+          <div className="stat-block">
+            <span className="stat-label">High priority</span>
+            <span className="stat-value" style={{ color: 'var(--severity-high)' }}>4</span>
           </div>
 
-          <div className="stat-card">
-            <span>Assigned crews</span>
-            <strong>8</strong>
-            <small>6 currently active</small>
+          <div className="stat-block">
+            <span className="stat-label">Assigned crews</span>
+            <span className="stat-value">8</span>
           </div>
 
-          <div className="stat-card">
-            <span>Resolved today</span>
-            <strong>17</strong>
-            <small>↑ 12% from yesterday</small>
+          <div className="stat-block">
+            <span className="stat-label">Resolved today</span>
+            <span className="stat-value">17</span>
           </div>
         </div>
 
         <div className="main-grid">
           <section className="panel incidents-panel">
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">PRIORITY QUEUE</p>
-                <h2>Active incidents</h2>
-              </div>
+            <header className="panel-header">
+              <h2 className="panel-title">Priority queue</h2>
+              <button className="action-link">View full queue</button>
+            </header>
 
-              <button className="text-button">View all →</button>
-            </div>
-
-            <div className="filters">
-              <button className="filter active">All</button>
-              <button className="filter">High priority</button>
-              <button className="filter">Unassigned</button>
-            </div>
-
-            <div className="incident-list">
+            <div className="queue-list">
               {incidents.map((incident) => (
-                <div className="incident" key={incident.id}>
-                  <div className="incident-main">
-                    <div className={`priority-dot ${incident.priority.toLowerCase()}`} />
-
-                    <div>
-                      <strong>{incident.issue}</strong>
-                      <span>{incident.location}</span>
+                <div className={`incident-row ${incident.severity}`} key={incident.id}>
+                  <div className="incident-details">
+                    <div className="incident-title">
+                      {incident.severity === 'high' && <span style={{ color: 'var(--severity-high)', fontWeight: 'bold' }}>[!]</span>}
+                      {incident.issue}
+                    </div>
+                    <div className="incident-location">
+                      {incident.id} | {incident.location} | {incident.reports} reports
                     </div>
                   </div>
 
-                  <div className="incident-meta">
-                    <span>{incident.reports} reports</span>
-                    <span className={`priority ${incident.priority.toLowerCase()}`}>
-                      {incident.priority}
+                  <div className="incident-status-group">
+                    <span className={`severity-text ${incident.severity}`}>
+                      {incident.severity.toUpperCase()}
                     </span>
-                    <span className="status">{incident.status}</span>
+                    <span className={`status-text ${incident.status === 'Resolved' ? 'resolved' : ''}`}>
+                      [{incident.status}]
+                    </span>
                   </div>
                 </div>
               ))}
@@ -156,57 +138,14 @@ export default function Home() {
           </section>
 
           <section className="panel map-panel">
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">DISTRICT 04</p>
-                <h2>Live map</h2>
-              </div>
+            <header className="panel-header">
+              <h2 className="panel-title">Live map</h2>
+              <span className="mono" style={{ fontSize: '13px', color: 'var(--text-muted)' }}>BENGALURU</span>
+            </header>
 
-              <span className="live">
-                <i /> Live
-              </span>
-            </div>
-
-            <div className="map-container-wrapper" style={{ padding: "0 20px 20px" }}>
-              <LiveMap />
-            </div>
+            <LiveMap />
           </section>
         </div>
-
-        <section className="panel workflow-panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">WORKFLOW</p>
-              <h2>How UrbanOps handles an incident</h2>
-            </div>
-          </div>
-
-          <div className="workflow">
-            <div>
-              <b>01</b>
-              <strong>Report received</strong>
-              <span>Citizen submits location and issue details.</span>
-            </div>
-
-            <div>
-              <b>02</b>
-              <strong>Duplicates grouped</strong>
-              <span>Nearby reports are combined into one incident.</span>
-            </div>
-
-            <div>
-              <b>03</b>
-              <strong>Priority calculated</strong>
-              <span>Severity and report count determine urgency.</span>
-            </div>
-
-            <div>
-              <b>04</b>
-              <strong>Crew assigned</strong>
-              <span>Dispatcher sends the right crew to the location.</span>
-            </div>
-          </div>
-        </section>
       </section>
     </main>
   );
