@@ -17,17 +17,51 @@ UrbanOps sits between citizen reports and city dispatchers:
 
 ## Architecture
 
-Three clients (Mobile app – React Native, Web portal – Next.js, Admin dashboard – Next.js, role-gated) talk only to a single Express.js API. The API reads/writes MongoDB Atlas, stores images in AWS S3, and optionally calls a stretch Python YOLO service for face/plate masking.
+```mermaid
+flowchart TD
+    subgraph Clients["CLIENTS"]
+        direction LR
+        Admin["Admin dashboard<br>Next.js: role-gated<br>dispatcher live map"]
+        Web["Web portal<br>Next.js: citizen report +<br>track"]
+        Mobile["Mobile app<br>React Native"]
+    end
 
-```
-Clients (Mobile / Web Portal / Admin Dashboard)
-        |
-        v
-Express.js API (Auth, Issues, Severity, Live Updates, Analytics)
-        |
-   -----+------+-------
-   |           |       |
-MongoDB       S3    Python AI (stretch)
+    subgraph Notes[" "]
+        direction TB
+        Note1["All clients talk only to the<br>API, never directly to DB,<br>storage, or AI service."]
+        Note2["Stretch scope — cut first<br>if behind schedule."]
+    end
+
+    API["API LAYER<br>Express.js API server<br><br>Auth — JWT/bcrypt<br>Issue service — CRUD + geospatial dedup<br>Severity engine — weight + decay formula<br>Live update service — Socket.io + geohash rooms<br>Analytics service"]
+
+    subgraph Downstream["DOWNSTREAM"]
+        direction LR
+        AI["Python AI service<br>YOLO detection + face/<br>plate masking<br>STRETCH / OPTIONAL"]
+        Mongo["MongoDB Atlas<br>users, issues, 2dsphere<br>geo index"]
+        S3["AWS S3<br>original + masked images"]
+    end
+
+    Admin --> API
+    Web --> API
+    Mobile --> API
+
+    API --> AI
+    API --> Mongo
+    API --> S3
+
+    %% Styling to match the diagram
+    style Admin fill:#eff6ff,stroke:#3b82f6,stroke-width:2px,color:#333
+    style Web fill:#eff6ff,stroke:#3b82f6,stroke-width:2px,color:#333
+    style Mobile fill:#eff6ff,stroke:#3b82f6,stroke-width:2px,color:#333
+
+    style Note1 fill:#f8fafc,stroke:#64748b,stroke-width:2px,color:#333
+    style Note2 fill:#fffbeb,stroke:#f59e0b,stroke-width:2px,color:#333
+
+    style API fill:#f3e8ff,stroke:#8b5cf6,stroke-width:2px,color:#333
+
+    style AI fill:#fef2f2,stroke:#ef4444,stroke-width:2px,stroke-dasharray: 5 5,color:#333
+    style Mongo fill:#f0fdf4,stroke:#22c55e,stroke-width:2px,color:#333
+    style S3 fill:#fffbeb,stroke:#f59e0b,stroke-width:2px,color:#333
 ```
 
 ## Tech Stack
