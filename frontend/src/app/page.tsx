@@ -61,7 +61,7 @@ export default function Home() {
         <nav>
           <Link href="#" className="nav-item active">Dashboard</Link>
           <Link href="#" className="nav-item">Incidents</Link>
-          <Link href="#" className="nav-item">Live Map</Link>
+          <Link href="/livemap" className="nav-item">Live Map</Link>
           <Link href="#" className="nav-item">Crews</Link>
           <Link href="#" className="nav-item">Reports</Link>
         </nav>

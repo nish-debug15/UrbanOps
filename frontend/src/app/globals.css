@@ -463,3 +463,177 @@ button {
     justify-content: space-between;
   }
 }
+
+/* =========================
+   LIVE MAP
+========================= */
+
+.live-map-container {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #777;
+  background: #fff;
+}
+
+.live-map-topbar {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  border-bottom: 1px solid #777;
+  background: #fff;
+}
+
+.live-map-topbar strong {
+  font-size: 16px;
+}
+
+.live-status {
+  margin-left: 15px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.live-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #4a7c59;
+}
+
+.map-location {
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+/* Map itself */
+
+.map-wrapper {
+  position: relative;
+  width: 100%;
+  height: 500px;
+}
+
+/* Civic markers */
+
+.civic-marker {
+  width: 14px !important;
+  height: 14px !important;
+  border-radius: 2px;
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.civic-marker.high {
+  background: #cc3333;
+}
+
+.civic-marker.medium {
+  background: #d97706;
+}
+
+.civic-marker.low {
+  background: #4a7c59;
+}
+
+/* Pulsing high priority marker */
+
+.pulse-ring {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  left: -7px;
+  top: -7px;
+  border: 2px solid #cc3333;
+  border-radius: 50%;
+  animation: civic-pulse 1.8s infinite;
+  opacity: 0.7;
+}
+
+@keyframes civic-pulse {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.8;
+  }
+
+  70% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+/* Legend */
+
+.map-legend {
+  position: absolute;
+  bottom: 18px;
+  left: 18px;
+  z-index: 1000;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #777;
+  font-size: 12px;
+}
+
+.legend-title {
+  font-size: 10px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.legend-marker {
+  width: 10px;
+  height: 10px;
+  display: inline-block;
+  border-radius: 2px;
+}
+
+.legend-marker.high {
+  background: #cc3333;
+}
+
+.legend-marker.medium {
+  background: #d97706;
+}
+
+.legend-marker.low {
+  background: #4a7c59;
+}
+
+/* Counter */
+
+.map-counter {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 1000;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #777;
+  padding: 10px 14px;
+}
+
+.map-counter strong {
+  font-size: 20px;
+  margin-right: 7px;
+}
+
+.map-counter span {
+  font-size: 11px;
+}
