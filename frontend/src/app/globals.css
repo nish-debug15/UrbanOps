@@ -77,9 +77,9 @@ button {
 
 .logo-text {
   font-family: var(--font-plex-mono), monospace;
-  font-size: 20px;
+  font-size: 28px;
   font-weight: 700;
-  letter-spacing: -0.5px;
+  letter-spacing: -1px;
   color: var(--text-main);
 }
 
@@ -368,6 +368,7 @@ button {
 }
 
 /* REPORT PAGE / FORM RE-STYLES TO MATCH */
+/* REPORT PAGE */
 .report-page {
   min-height: 100vh;
   padding: 40px;
@@ -379,9 +380,49 @@ button {
   margin: 0 auto;
 }
 
+.back-link {
+  display: inline-block;
+  margin-bottom: 32px;
+  color: var(--accent-civic);
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: underline;
+}
+
+.back-link:hover {
+  color: var(--accent-hover);
+}
+
+.report-header {
+  margin-bottom: 32px;
+}
+
+.eyebrow {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+.report-header h1 {
+  font-size: 32px;
+  margin: 0 0 12px;
+  color: var(--text-main);
+  letter-spacing: -0.5px;
+}
+
+.report-header > p {
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1.5;
+  margin: 0;
+}
+
 .report-form {
   background: var(--bg-panel);
-  border: 1px solid var(--border-main);
+  border: 2px solid var(--border-main);
   padding: 32px;
 }
 
@@ -406,12 +447,105 @@ button {
   font-size: 14px;
   background: var(--bg-panel);
   color: var(--text-main);
+  transition: outline 0.1s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: 2px solid var(--accent-civic);
+  outline-offset: -1px;
+}
+
+.location-button {
+  margin-top: 8px;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent-civic);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.location-button:hover {
+  color: var(--accent-hover);
 }
 
 .upload-box {
-  border: 1px solid var(--border-main);
+  border: 1px dashed var(--border-main);
   background: var(--bg-base);
   padding: 24px;
+  text-align: center;
+}
+
+.upload-box span {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.submit-button {
+  width: 100%;
+  background: var(--accent-civic);
+  color: #FFFFFF;
+  border: 2px solid var(--border-main);
+  padding: 14px;
+  font-family: var(--font-plex-mono), monospace;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.submit-button:hover {
+  background: var(--accent-hover);
+}
+
+.success-message {
+  max-width: 600px;
+  margin: 100px auto;
+  background: var(--bg-panel);
+  border: 2px solid var(--border-main);
+  padding: 40px;
+  text-align: center;
+}
+
+.success-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--border-main);
+  background: var(--severity-low);
+  color: white;
+  font-size: 24px;
+  font-weight: bold;
+  margin: 0 auto 24px;
+}
+
+.success-message h1 {
+  font-size: 28px;
+  margin: 0 0 16px;
+  color: var(--text-main);
+}
+
+.success-message p {
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.success-actions {
+  margin-top: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+}
+
+.success-actions .submit-button {
+  text-decoration: none;
+  display: block;
   text-align: center;
 }
 

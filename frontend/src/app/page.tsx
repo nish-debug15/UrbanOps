@@ -47,14 +47,6 @@ export default function Home() {
     <main className="app">
       <aside className="sidebar">
         <div className="logo-container">
-          <svg className="logo-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square">
-            {/* Abstracted city grid 'U' */}
-            <path d="M4 4v16h16V4" />
-            <path d="M10 4v16" />
-            <path d="M16 4v16" />
-            <path d="M4 10h16" />
-            <path d="M4 16h16" />
-          </svg>
           <span className="logo-text">UrbanOps</span>
         </div>
 
