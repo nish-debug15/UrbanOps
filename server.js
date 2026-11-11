@@ -1,69 +1,46 @@
 /**
- * UrbanOps Backend Express Server
+ * UrbanOps Backend entry point: connect to MongoDB, then bind the HTTP server.
  */
 
-const express = require('express');
-const cors = require('cors');
 require('dotenv').config();
 
-const { connectDB } = require('./config/db');
-const telemetryRoutes = require('./routes/telemetry');
+const http = require('http');
+const app = require('./app');
+const { connectDB, setupConnectionLifecycle } = require('./config/db');
 
-const app = express();
 const PORT = process.env.PORT || 5000;
+const isProduction = process.env.NODE_ENV === 'production';
 
-// Middleware
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ extended: true }));
+const { getJwtSecret } = require('./services/auth');
+const { startDecayTicker } = require('./services/decay');
 
-const allowedOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:3000';
-app.use(
-  cors({
-    origin: allowedOrigin === '*' ? '*' : allowedOrigin,
-    credentials: true,
-  })
-);
-
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    status: 'ok',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// Telemetry Ingestion API Endpoint
-app.use('/api/v1/telemetry', telemetryRoutes);
-
-// Catch-all 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Endpoint not found' });
-});
-
-// Global error handler
-app.use((err, req, res, next) => {
-  console.error('[Unhandled Server Error]:', err);
-  res.status(500).json({ error: 'Internal server error' });
-});
-
-// Start server after connecting to MongoDB
 const startServer = async () => {
+  // Fail at boot (not on first login) if JWT_SECRET is missing in production.
+  getJwtSecret();
+  setupConnectionLifecycle();
+
   try {
     await connectDB();
-    app.listen(PORT, () => {
-      console.log(`[UrbanOps Server] Running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
-      console.log(`[UrbanOps Server] Telemetry ingest endpoint available at POST http://localhost:${PORT}/api/v1/telemetry/ingest`);
-    });
   } catch (error) {
-    console.error('[UrbanOps Server] Failed to initialize database connection. Starting server without active DB connection...');
-    // Still bind server to allow diagnostics, or exit according to environment
-    app.listen(PORT, () => {
-      console.warn(`[UrbanOps Server] Running on port ${PORT} (Database Offline)`);
-    });
+    console.error('[UrbanOps Server] MongoDB connection failed:', error.message);
+    if (isProduction) {
+      // In production, let the process manager restart us rather than serve 503s forever.
+      process.exit(1);
+    }
+    console.warn('[UrbanOps Server] Dev mode: starting anyway. /api/v1 routes will return 503 until the DB is reachable.');
   }
+
+  startDecayTicker();
+
+  const server = http.createServer(app);
+  server.listen(PORT, () => {
+    console.log(`[UrbanOps Server] Listening on http://localhost:${PORT} (${process.env.NODE_ENV || 'development'})`);
+  });
+  return server;
 };
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
 
-module.exports = app;
+module.exports = { startServer };

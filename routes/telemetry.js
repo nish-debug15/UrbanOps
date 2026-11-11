@@ -6,34 +6,35 @@
  */
 
 const express = require('express');
-const router = express.Router();
+const { rateLimit } = require('express-rate-limit');
 const RawData = require('../models/RawData');
 
+const router = express.Router();
+
+// Public endpoint: cap per-IP write volume so it can't be used to flood the DB.
+const ingestLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: Number(process.env.TELEMETRY_RATE_LIMIT) || 60,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many telemetry events, slow down' },
+});
+
 /**
- * Helper to extract client IP address accurately, handling reverse proxies
- * (X-Forwarded-For) and standard socket connections.
- * 
+ * Client IP. req.ip honours X-Forwarded-For only when the app's `trust proxy`
+ * setting allows it (TRUST_PROXY env), so clients can't spoof their address.
+ *
  * @param {express.Request} req
  * @returns {string}
  */
-const extractClientIp = (req) => {
-  const forwardedFor = req.headers['x-forwarded-for'];
-  if (forwardedFor) {
-    // X-Forwarded-For can contain comma-separated IPs (client, proxy1, proxy2)
-    const ips = forwardedFor.split(',').map((ip) => ip.trim());
-    if (ips.length > 0 && ips[0]) {
-      return ips[0];
-    }
-  }
-  return req.socket?.remoteAddress || req.ip || 'unknown';
-};
+const extractClientIp = (req) => req.ip || req.socket?.remoteAddress || 'unknown';
 
 /**
  * @route   POST /api/v1/telemetry/ingest
  * @desc    Ingest un-sanitized raw telemetry and operational event logs
  * @access  Public / Client Internal
  */
-router.post('/ingest', async (req, res) => {
+router.post('/ingest', ingestLimiter, async (req, res) => {
   try {
     const { source, eventType, payload } = req.body;
 
