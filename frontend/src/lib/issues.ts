@@ -42,17 +42,47 @@ export const CATEGORY_LABEL: Record<IssueCategory, string> = {
   minor: "Minor",
 };
 
-export type IssuePatch = { status?: IssueStatus; assignedTo?: string | null };
+export type IssuePatch = { status?: IssueStatus; assignedTo?: string | null; note?: string };
 
-export const patchIssue = (id: string, body: IssuePatch) =>
-  api<{ issue: Issue }>(`/issues/${id}`, { method: "PATCH", body }).then((r) => r.issue);
+// Must match the API (services/storage.js).
+export const MAX_PHOTOS_PER_UPLOAD = 3;
+export const MAX_PHOTO_MB = 5;
+export const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+/** Keep the files the API will accept; describe the ones it won't. */
+export const checkPhotos = (files: File[], room: number) => {
+  const problems: string[] = [];
+  const accepted: File[] = [];
+  for (const file of files) {
+    if (!PHOTO_TYPES.includes(file.type)) problems.push(`${file.name} is not a JPEG, PNG or WebP image`);
+    else if (file.size > MAX_PHOTO_MB * 1024 * 1024) problems.push(`${file.name} is larger than ${MAX_PHOTO_MB} MB`);
+    else accepted.push(file);
+  }
+  if (accepted.length > room) problems.push(`You can attach up to ${MAX_PHOTOS_PER_UPLOAD} photos at a time`);
+  return { accepted: accepted.slice(0, Math.max(0, room)), error: problems.length ? `${problems.join(". ")}.` : null };
+};
+
+/**
+ * Update an issue. `photos` are "after" pictures of the fix: allowed when resolving,
+ * or on an issue that is already resolved. With photos the request is multipart.
+ */
+export const patchIssue = (id: string, body: IssuePatch, photos: File[] = []) => {
+  if (!photos.length) return api<{ issue: Issue }>(`/issues/${id}`, { method: "PATCH", body }).then((r) => r.issue);
+  const form = new FormData();
+  if (body.status) form.set("status", body.status);
+  if (body.note) form.set("note", body.note);
+  if (typeof body.assignedTo === "string") form.set("assignedTo", body.assignedTo);
+  photos.forEach((file) => form.append("photos", file));
+  return api<{ issue: Issue }>(`/issues/${id}`, { method: "PATCH", body: form }).then((r) => r.issue);
+};
 
 export const fetchIssue = (id: string, signal?: AbortSignal) =>
   api<{ issue: Issue }>(`/issues/${id}`, { signal }).then((r) => r.issue);
 
 /** Body for a status move. Dispatching an unassigned issue assigns it to the actor. */
-export const moveBody = (issue: Issue, status: IssueStatus, actorId?: string): IssuePatch => {
+export const moveBody = (issue: Issue, status: IssueStatus, actorId?: string, note?: string): IssuePatch => {
   const body: IssuePatch = { status };
+  if (status === "resolved" && note?.trim()) body.note = note.trim();
   if (status === "dispatched" && !issue.assignedTo && actorId) body.assignedTo = actorId;
   return body;
 };
@@ -60,6 +90,7 @@ export const moveBody = (issue: Issue, status: IssueStatus, actorId?: string): I
 /** One line per history entry, e.g. "Asha (dispatcher) dispatched it". */
 export const describeHistory = (e: HistoryEntry) => {
   const who = `${e.byName || "Someone"}${e.byRole ? ` (${e.byRole})` : ""}`;
+  if (e.action === "photos") return `${who} added ${e.to === "1" ? "a photo" : `${e.to} photos`} of the fix`;
   if (e.action === "assignment") return e.to ? `${who} assigned it to ${e.toName || "a staff member"}` : `${who} unassigned it`;
   const verb: Record<string, string> = {
     "open>dispatched": "dispatched it",
@@ -68,5 +99,6 @@ export const describeHistory = (e: HistoryEntry) => {
     "dispatched>open": "undid the dispatch",
     "resolved>open": "reopened it",
   };
-  return `${who} ${verb[`${e.from}>${e.to}`] || `moved it to ${e.to}`}`;
+  const what = `${who} ${verb[`${e.from}>${e.to}`] || `moved it to ${e.to}`}`;
+  return e.note ? `${what}: “${e.note}”` : what;
 };

@@ -44,6 +44,11 @@ const UserSchema = new Schema(
     // Set when an admin creates the account with a temporary password.
     mustChangePassword: { type: Boolean, default: false },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    // Tokens issued before this moment are rejected (set on every password change).
+    passwordChangedAt: { type: Date, default: null },
+    // Self-service password reset: only the SHA-256 of the emailed token is stored.
+    resetTokenHash: { type: String, default: null, select: false },
+    resetTokenExpires: { type: Date, default: null, select: false },
   },
   { timestamps: true }
 );
@@ -54,6 +59,8 @@ UserSchema.index({ region: 1, role: 1 });
 UserSchema.set('toJSON', {
   transform: (_doc, ret) => {
     delete ret.passwordHash;
+    delete ret.resetTokenHash;
+    delete ret.resetTokenExpires;
     delete ret.__v;
     return ret;
   },

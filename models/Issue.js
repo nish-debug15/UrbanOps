@@ -40,10 +40,11 @@ const ImageSchema = new Schema(
 
 const HistorySchema = new Schema(
   {
-    action: { type: String, enum: ['status', 'assignment'], required: true },
+    action: { type: String, enum: ['status', 'assignment', 'photos'], required: true },
     from: { type: String, default: null },
     to: { type: String, default: null },
     toName: { type: String, default: null }, // assignee name, for assignment entries
+    note: { type: String, maxlength: 1000 }, // resolution note, for "resolved" entries
     by: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     byName: { type: String },
     byRole: { type: String },
@@ -68,6 +69,10 @@ const IssueSchema = new Schema(
     severityScore: { type: Number, default: 0 },
     assignedTo: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     resolvedAt: { type: Date, default: null },
+    // What staff did to fix it; visible to the reporters. Cleared on reopen.
+    resolutionNote: { type: String, trim: true, maxlength: 1000, default: null },
+    // "After" photos added by staff as proof of the fix; visible to the reporters. Cleared on reopen.
+    resolutionImages: { type: [ImageSchema], default: [] },
     // Jurisdiction, resolved from the location at report time (services/regions.js).
     region: { type: String, default: 'unassigned' },
     regionName: { type: String, default: 'Unassigned' },
@@ -82,6 +87,8 @@ IssueSchema.index({ status: 1, severityScore: -1 });
 IssueSchema.index({ region: 1, status: 1, severityScore: -1 }); // state-scoped queues
 IssueSchema.index({ status: 1, createdAt: -1 }); // ?sort=recent
 IssueSchema.index({ reporterIds: 1, updatedAt: -1 }); // GET /issues/mine
+IssueSchema.index({ region: 1, createdAt: -1 }); // analytics: reports per day
+IssueSchema.index({ region: 1, resolvedAt: -1 }); // analytics: resolutions per day
 
 IssueSchema.methods.recomputeSeverity = function recomputeSeverity(now = new Date()) {
   this.severityScore = computeSeverity(

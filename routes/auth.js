@@ -5,6 +5,10 @@
  *   POST /api/v1/auth/login             → { token, user, permissions }
  *   GET  /api/v1/auth/me                → current user + permissions
  *   POST /api/v1/auth/change-password   → { currentPassword, newPassword }
+ *   POST /api/v1/auth/forgot-password   → { email }: emails a one-time reset link
+ *   POST /api/v1/auth/reset-password    → { token, newPassword }: signs the user in
+ *
+ * Changing or resetting a password invalidates every token issued before it.
  *
  * How each role is created:
  *   citizen     self-registration
@@ -16,7 +20,15 @@
 const express = require('express');
 const { rateLimit } = require('express-rate-limit');
 const User = require('../models/User');
-const { hashPassword, verifyPassword, signToken, DUMMY_HASH } = require('../services/auth');
+const {
+  hashPassword,
+  verifyPassword,
+  signToken,
+  createResetToken,
+  hashResetToken,
+  DUMMY_HASH,
+} = require('../services/auth');
+const { sendMail, passwordResetEmail } = require('../services/mailer');
 const { claimInvite, releaseInvite } = require('../services/invites');
 const { requireAuth } = require('../middleware/auth');
 const { TRANSITIONS_BY_ROLE, atLeast } = require('../config/permissions');
@@ -43,6 +55,8 @@ const validPassword = (p) => typeof p === 'string' && p.length >= PASSWORD_MIN &
 const permissionsFor = (user) => ({
   transitions: TRANSITIONS_BY_ROLE[user.role] || {},
   canViewAllIssues: atLeast(user.role, 'dispatcher'),
+  // Only citizens file reports; staff act on them.
+  canReport: user.role === 'citizen',
   canManageStaff: user.role === 'admin' || user.role === 'superadmin',
   canInviteAdmins: user.role === 'superadmin',
   allRegions: user.role === 'superadmin',
@@ -182,7 +196,69 @@ router.post('/change-password', credentialLimiter, requireAuth, async (req, res,
 
     user.passwordHash = await hashPassword(newPassword);
     user.mustChangePassword = false;
+    user.passwordChangedAt = new Date(); // older tokens stop working
     await user.save();
+    return res.json(authResponse(user));
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ---------------------------------------------------------------- forgot / reset password
+
+const FORGOT_RESPONSE = {
+  success: true,
+  message: 'If an account exists for that email, a reset link has been sent. It expires in 30 minutes.',
+};
+
+// Same answer whether or not the email exists, so this can't be used to find accounts.
+router.post('/forgot-password', credentialLimiter, async (req, res, next) => {
+  try {
+    const { email } = req.body || {};
+    if (!isNonEmptyString(email) || !EMAIL_RE.test(email.trim())) {
+      return res.status(400).json({ success: false, error: 'a valid email is required' });
+    }
+
+    const user = await User.findOne({ email: email.trim().toLowerCase() });
+    if (user) {
+      const { token, hash, expires } = createResetToken();
+      await User.updateOne({ _id: user._id }, { $set: { resetTokenHash: hash, resetTokenExpires: expires } });
+      // Not awaited: the response time must not depend on whether the account exists.
+      sendMail({ to: user.email, ...passwordResetEmail({ name: user.name, token, expiresAt: expires }) }).catch(() => undefined);
+    }
+    return res.json(FORGOT_RESPONSE);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+router.post('/reset-password', credentialLimiter, async (req, res, next) => {
+  try {
+    const { token, newPassword } = req.body || {};
+    if (!isNonEmptyString(token) || !validPassword(newPassword)) {
+      return res.status(400).json({
+        success: false,
+        error: `token is required and newPassword must be ${PASSWORD_MIN}-${PASSWORD_MAX} characters`,
+      });
+    }
+
+    // Claim the token atomically: it works once, even if submitted twice at the same time.
+    const user = await User.findOneAndUpdate(
+      { resetTokenHash: hashResetToken(token.trim()), resetTokenExpires: { $gt: new Date() } },
+      {
+        $set: {
+          passwordHash: await hashPassword(newPassword),
+          mustChangePassword: false,
+          passwordChangedAt: new Date(),
+          resetTokenHash: null,
+          resetTokenExpires: null,
+        },
+      },
+      { new: true }
+    );
+    if (!user) {
+      return res.status(400).json({ success: false, error: 'This reset link is invalid or has expired. Request a new one.' });
+    }
     return res.json(authResponse(user));
   } catch (err) {
     return next(err);

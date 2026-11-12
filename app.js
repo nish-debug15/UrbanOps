@@ -5,6 +5,7 @@
 
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 
 const { isDbReady } = require('./config/db');
 const { corsOptions } = require('./config/cors');
@@ -13,6 +14,8 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const issueRoutes = require('./routes/issues');
 const inviteRoutes = require('./routes/invites');
+const { UPLOAD_DIR, PUBLIC_PREFIX } = require('./services/storage');
+const { startNotifications } = require('./services/notifications');
 
 const app = express();
 
@@ -22,10 +25,26 @@ const trustProxy = process.env.TRUST_PROXY;
 app.set('trust proxy', trustProxy ? (Number.isNaN(Number(trustProxy)) ? trustProxy : Number(trustProxy)) : false);
 app.disable('x-powered-by');
 
+// Security headers. This is a JSON API consumed by a web app on another origin, so
+// responses (including report photos) must be loadable cross-origin.
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
 app.use(cors(corsOptions));
+
+// Report photos: random, unguessable names; served as files only (no directory
+// listing, no dotfiles) and never sniffed into another content type.
+app.use(
+  PUBLIC_PREFIX,
+  express.static(UPLOAD_DIR, { index: false, dotfiles: 'deny', fallthrough: false, maxAge: '30d', immutable: true }),
+  // eslint-disable-next-line no-unused-vars
+  (err, req, res, next) => res.status(err.status === 404 ? 404 : 400).json({ success: false, error: 'File not found' })
+);
+
+// Email reporters when their issue is dispatched or resolved.
+startNotifications();
 
 // Health check reports DB state so monitors can tell "up" from "up but useless".
 app.get('/api/health', (req, res) => {

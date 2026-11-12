@@ -6,6 +6,7 @@ import AppShell from "@/components/AppShell";
 import { api, errorMessage, type Issue, type Paged } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useIssueStream, type IssueEvent } from "@/lib/socket";
+import PhotoStrip from "@/components/PhotoStrip";
 import { STATUS_LABEL, issuePlace, issueRef, issueTitle, priorityOf, timeAgo } from "@/lib/format";
 
 const STEPS = ["open", "dispatched", "resolved"] as const;
@@ -14,6 +15,7 @@ export default function MyReportsPage() {
   return (
     <AppShell
       title="My reports"
+      roles={["citizen"]}
       actions={
         <Link href="/report" className="report-button">
           [+] Report issue
@@ -52,7 +54,7 @@ function MyReports() {
   return (
     <>
       <div className="board-toolbar">
-        <span className="mono muted">Issues you reported. Status updates appear here automatically.</span>
+        <span />
         <span className={`live-badge ${live ? "on" : ""}`}>
           <span className="live-dot" /> {live ? "LIVE" : "OFFLINE"}
         </span>
@@ -88,6 +90,19 @@ function MyReports() {
                   </li>
                 ))}
               </ol>
+
+              {issue.status === "resolved" && issue.resolutionNote && (
+                <p className="resolution-note">
+                  <strong>What was done:</strong> {issue.resolutionNote}
+                </p>
+              )}
+              <PhotoStrip images={issue.images} />
+              {issue.status === "resolved" && !!issue.resolutionImages?.length && (
+                <div className="after-photos">
+                  <span className="after-label">After the fix</span>
+                  <PhotoStrip images={issue.resolutionImages} max={6} />
+                </div>
+              )}
 
               <div className="mono muted small">
                 {issue.reportCount > 1

@@ -1,0 +1,12 @@
+node_modules
+frontend
+.git
+.github
+.next
+.env
+.env.*
+!.env.example
+uploads
+masking
+tests
+*.md

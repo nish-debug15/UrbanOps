@@ -50,7 +50,34 @@ const signToken = (user) =>
 const verifyToken = (token) =>
   jwt.verify(token, getJwtSecret(), { issuer: JWT_ISSUER, algorithms: ['HS256'] });
 
+/**
+ * True if the token was issued before the account's last password change, so a
+ * stolen or forgotten session stops working as soon as the password is changed.
+ * JWT `iat` is in whole seconds, so compare at that resolution: a token signed in
+ * the same second as the change (the one handed back by change-password) stays valid.
+ */
+const issuedBeforePasswordChange = (claims, user) => {
+  if (!user?.passwordChangedAt || typeof claims?.iat !== 'number') return false;
+  return claims.iat < Math.floor(new Date(user.passwordChangedAt).getTime() / 1000);
+};
+
+// ---- self-service password reset tokens
+
+const RESET_TOKEN_TTL_MS = (Number(process.env.RESET_TOKEN_MINUTES) || 30) * 60 * 1000;
+
+const hashResetToken = (token) => crypto.createHash('sha256').update(String(token)).digest('hex');
+
+/** @returns {{ token: string, hash: string, expires: Date }} token goes in the email, hash in the DB */
+const createResetToken = () => {
+  const token = crypto.randomBytes(32).toString('hex');
+  return { token, hash: hashResetToken(token), expires: new Date(Date.now() + RESET_TOKEN_TTL_MS) };
+};
+
 module.exports = {
+  issuedBeforePasswordChange,
+  createResetToken,
+  hashResetToken,
+  RESET_TOKEN_TTL_MS,
   getJwtSecret,
   hashPassword,
   verifyPassword,

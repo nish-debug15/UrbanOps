@@ -1,0 +1,7 @@
+# torch is installed separately (CPU build) in the Dockerfile; see README for local setup.
+ultralytics==8.4.211
+opencv-python>=4.10,<5
+fastapi==0.162.5
+uvicorn==0.54.0
+# Only needed by smoke_test.py (FastAPI's test client)
+httpx>=0.27,<1

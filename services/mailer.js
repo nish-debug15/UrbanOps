@@ -165,4 +165,86 @@ const staffEmail = ({ name, temporaryPassword, regionName, createdBy, reason = '
   return { subject, text, html };
 };
 
-module.exports = { sendMail, setTransport, inviteEmail, staffEmail, appUrl, getMode: () => mode };
+const shell = (title, bodyHtml) => `
+<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#1A1C1E">
+  <p style="font-size:12px;letter-spacing:1.5px;color:#4D5358;font-weight:700">${APP_NAME} COMMAND CENTER</p>
+  <h2 style="margin:0 0 12px">${escapeHtml(title)}</h2>
+  ${bodyHtml}
+</div>`;
+
+const button = (href, label) =>
+  `<p style="margin:24px 0 8px"><a href="${escapeHtml(href)}" style="background:#2B5C5D;color:#fff;text-decoration:none;padding:12px 20px;font-weight:700;display:inline-block">${escapeHtml(label)}</a></p>`;
+
+/** Self-service password reset link. */
+const passwordResetEmail = ({ name, token, expiresAt }) => {
+  const link = `${appUrl()}/reset-password?token=${encodeURIComponent(token)}`;
+  const minutes = Math.max(1, Math.round((new Date(expiresAt).getTime() - Date.now()) / 60000));
+  const subject = `Reset your ${APP_NAME} password`;
+  const text = [
+    `Hello ${name},`,
+    '',
+    `Someone asked to reset the password for your ${APP_NAME} account. Choose a new one here:`,
+    '',
+    link,
+    '',
+    `The link works once and expires in ${minutes} minutes. If this wasn't you, ignore this email: your password stays the same.`,
+    '',
+    `— ${APP_NAME}`,
+  ].join('\n');
+  const html = shell(
+    subject,
+    `<p>Hello ${escapeHtml(name)},</p>
+  <p>Someone asked to reset the password for your ${APP_NAME} account.</p>
+  ${button(link, 'Choose a new password')}
+  <p style="font-size:13px;color:#4D5358">The link works once and expires in <b>${minutes} minutes</b>. If this wasn't you, ignore this email: your password stays the same.</p>`
+  );
+  return { subject, text, html };
+};
+
+/** Tells a reporter their issue was dispatched or resolved. */
+const issueStatusEmail = ({ name, title, ref, place, status, note }) => {
+  const link = `${appUrl()}/my-reports`;
+  const resolved = status === 'resolved';
+  const subject = resolved ? `Resolved: ${title} (${ref})` : `A crew is on it: ${title} (${ref})`;
+  const intro = resolved
+    ? `The issue you reported has been marked as resolved.`
+    : `The issue you reported has been dispatched: someone has been assigned to deal with it.`;
+  const text = [
+    `Hello ${name},`,
+    '',
+    intro,
+    '',
+    `${title} · ${ref}`,
+    ...(place ? [place] : []),
+    ...(resolved && note ? ['', `What was done: ${note}`] : []),
+    '',
+    `Follow your reports: ${link}`,
+    ...(resolved ? ['', 'If the problem is still there, report it again and it will be reopened as a new issue.'] : []),
+    '',
+    `— ${APP_NAME}`,
+  ].join('\n');
+  const html = shell(
+    resolved ? 'Your report was resolved' : 'A crew is on it',
+    `<p>Hello ${escapeHtml(name)},</p>
+  <p>${escapeHtml(intro)}</p>
+  <div style="border-left:4px solid #2B5C5D;padding:8px 14px;margin:16px 0;background:#F2F4F5">
+    <b>${escapeHtml(title)}</b> <span style="font-family:Consolas,monospace;color:#4D5358">${escapeHtml(ref)}</span>
+    ${place ? `<br><span style="color:#4D5358">${escapeHtml(place)}</span>` : ''}
+  </div>
+  ${resolved && note ? `<p><b>What was done:</b> ${escapeHtml(note)}</p>` : ''}
+  ${button(link, 'View my reports')}
+  ${resolved ? '<p style="font-size:13px;color:#4D5358">If the problem is still there, report it again and it will be opened as a new issue.</p>' : ''}`
+  );
+  return { subject, text, html };
+};
+
+module.exports = {
+  sendMail,
+  setTransport,
+  inviteEmail,
+  staffEmail,
+  passwordResetEmail,
+  issueStatusEmail,
+  appUrl,
+  getMode: () => mode,
+};

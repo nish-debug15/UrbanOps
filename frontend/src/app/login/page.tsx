@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { errorMessage } from "@/lib/api";
@@ -7,21 +8,17 @@ import { homeFor, useAuth } from "@/lib/auth";
 
 type Mode = "login" | "register" | "invite";
 
-const COPY: Record<Mode, { title: string; blurb: string; submit: string }> = {
+const COPY: Record<Mode, { title: string; submit: string }> = {
   login: {
     title: "Sign in",
-    blurb: "Citizens report and track issues. State dispatchers and admins see their state's live command center.",
     submit: "Sign in",
   },
   register: {
     title: "Create a citizen account",
-    blurb: "Report potholes, leaks and hazards anywhere, and follow their progress until they're fixed.",
     submit: "Create account",
   },
   invite: {
     title: "Register as a state admin",
-    blurb:
-      "Enter the invite code you received from the UrbanOps platform team. It makes you the admin of the state it was issued for. Codes work once and expire.",
     submit: "Create admin account",
   },
 };
@@ -87,7 +84,6 @@ export default function LoginPage() {
         <div className="report-header">
           <p className="eyebrow">URBANOPS COMMAND CENTER</p>
           <h1>{copy.title}</h1>
-          <p>{copy.blurb}</p>
         </div>
 
         <div className="tabs" role="tablist">
@@ -128,7 +124,6 @@ export default function LoginPage() {
                 className="code-input"
                 defaultValue={prefillCode}
               />
-              {prefillCode && <span className="field-hint">Code filled in from your invitation link.</span>}
             </div>
           )}
 
@@ -155,7 +150,6 @@ export default function LoginPage() {
               maxLength={72}
               required
             />
-            {mode !== "login" && <span className="field-hint">At least 8 characters.</span>}
           </div>
 
           <button type="submit" className="submit-button" disabled={busy}>
@@ -163,9 +157,10 @@ export default function LoginPage() {
           </button>
 
           {mode === "login" && (
-            <p className="field-hint auth-footnote">
-              Dispatchers: your state admin creates your account and gives you a temporary password. You&apos;ll set your
-              own at first sign-in.
+            <p className="auth-forgot">
+              <Link href="/forgot-password" className="action-link">
+                Forgot your password?
+              </Link>
             </p>
           )}
         </form>

@@ -16,6 +16,7 @@ type Status = "loading" | "authenticated" | "anonymous";
 const NO_PERMISSIONS: Permissions = {
   transitions: {},
   canViewAllIssues: false,
+  canReport: false,
   canManageStaff: false,
   canInviteAdmins: false,
   allRegions: false,
@@ -31,6 +32,8 @@ type AuthContextValue = {
   /** State admin registration with a superadmin invite code. */
   registerAdmin: (code: string, name: string, email: string, password: string) => Promise<User>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<User>;
+  /** Finish a "forgot password" reset with the token from the email; signs the user in. */
+  resetPassword: (token: string, newPassword: string) => Promise<User>;
   logout: () => void;
 };
 
@@ -140,9 +143,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [applySession]
   );
 
+  const resetPassword = useCallback(
+    async (token: string, newPassword: string) => {
+      const res = await api<AuthResponse>("/auth/reset-password", { method: "POST", body: { token, newPassword } });
+      applySession(res.token, res.user, res.permissions);
+      return res.user;
+    },
+    [applySession]
+  );
+
   const value = useMemo(
-    () => ({ ...state, login, register, registerAdmin, changePassword, logout }),
-    [state, login, register, registerAdmin, changePassword, logout]
+    () => ({ ...state, login, register, registerAdmin, changePassword, resetPassword, logout }),
+    [state, login, register, registerAdmin, changePassword, resetPassword, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

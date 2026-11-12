@@ -4,6 +4,7 @@
  */
 
 const mongoose = require('mongoose');
+const ngeohash = require('ngeohash');
 const Issue = require('../models/Issue');
 const User = require('../models/User');
 const {
@@ -14,7 +15,8 @@ const {
 } = require('../config/constants');
 const { computeSeverity, severityExpression } = require('./severity');
 const { issueEvents } = require('./events');
-const { withLock } = require('./keyedMutex');
+const { withLocks } = require('./keyedMutex');
+const { MAX_IMAGES_PER_ISSUE, MAX_RESOLUTION_IMAGES, removeImage } = require('./storage');
 const {
   TRANSITIONS_BY_ROLE,
   allowedTransitions,
@@ -89,7 +91,8 @@ const mergeReportInto = async (issueId, { reporterId, category, images = [], now
           duplicateCount: { $cond: [isNewReporter, { $add: ['$duplicateCount', 1] }, '$duplicateCount'] },
           lastReportedAt: { $cond: [isNewReporter, now, '$lastReportedAt'] },
           reporterIds: { $setUnion: ['$reporterIds', [reporter]] },
-          images: { $concatArrays: ['$images', images] },
+          // $literal: stored paths are data, never evaluated as expressions.
+          images: { $slice: [{ $concatArrays: ['$images', { $literal: images }] }, MAX_IMAGES_PER_ISSUE] },
           updatedAt: now,
         },
       },
@@ -106,8 +109,9 @@ const mergeReportInto = async (issueId, { reporterId, category, images = [], now
  *
  * Concurrency:
  *  - Within one server process, "look for a duplicate, then insert" runs under a
- *    per-category lock, so simultaneous reports of the same pothole can't both miss
- *    and both insert. Each critical section is ~2 indexed queries.
+ *    lock per (category, small area), so simultaneous reports of the same pothole
+ *    can't both miss and both insert, while reports elsewhere in the city or of
+ *    another category are not held up. See lockKeysFor().
  *  - Across multiple server instances (no shared lock), a post-insert reconcile
  *    folds a newer duplicate into the oldest matching issue. This is best-effort:
  *    a perfectly simultaneous cross-instance race can still leave two tickets.
@@ -118,8 +122,38 @@ const submitReport = async (input) => {
   // Resolve the state OUTSIDE the lock: it may be a (cached, rate-limited) network call.
   const [lng, lat] = input.coordinates;
   const region = await resolveRegion(lat, lng);
-  return withLock(`report:${input.category}`, () => submitReportUnlocked({ ...input, region }));
+  return withLocks(lockKeysFor(input.category, input.coordinates), () => submitReportUnlocked({ ...input, region }));
 };
+
+const LOCK_GEOHASH_PRECISION = 6; // ~1.2km x 0.6km cells
+const MAX_LOCK_CELLS = 16;
+const METERS_PER_DEGREE = 111320;
+
+/**
+ * Lock keys for a report: every geohash cell its dedup circle touches, per category.
+ *
+ * Two reports that could merge are within DEDUP_RADIUS_METERS of each other, so each
+ * one's circle contains the other's point, and therefore the other's own cell: their
+ * key sets always share at least one lock. Reports further apart usually share none
+ * and run in parallel. (An unusually large radius falls back to one lock per category.)
+ */
+function lockKeysFor(category, [lng, lat]) {
+  const pad = DEDUP_RADIUS_METERS * 1.1;
+  const dLat = pad / METERS_PER_DEGREE;
+  const dLng = pad / (METERS_PER_DEGREE * Math.max(0.01, Math.cos((lat * Math.PI) / 180)));
+  const south = Math.max(-90, lat - dLat);
+  const north = Math.min(90, lat + dLat);
+  const west = Math.max(-180, lng - dLng);
+  const east = Math.min(180, lng + dLng);
+
+  // Estimate before enumerating so a huge radius can't build a huge cell list.
+  const cellWidth = 360 / 2 ** 15;
+  const cellHeight = 180 / 2 ** 15;
+  const estimate = (Math.ceil((east - west) / cellWidth) + 1) * (Math.ceil((north - south) / cellHeight) + 1);
+  if (estimate > MAX_LOCK_CELLS) return [`report:${category}`];
+
+  return ngeohash.bboxes(south, west, north, east, LOCK_GEOHASH_PRECISION).map((cell) => `report:${category}:${cell}`);
+}
 
 const submitReportUnlocked = async ({ category, subcategory, description, address, coordinates, reporterId, images = [], region }) => {
   const now = new Date();
@@ -167,6 +201,26 @@ const submitReportUnlocked = async ({ category, subcategory, description, addres
   return { issue, merged: false, alreadyReported: false };
 };
 
+/**
+ * "I see this too": add the caller as a reporter of an existing open issue, without
+ * filing a new report. Same effect on count and severity as a merged duplicate.
+ */
+const confirmIssue = async (issueId, reporterId) => {
+  if (!mongoose.isValidObjectId(issueId)) throw new ServiceError(400, 'Invalid issue id');
+  const before = await Issue.findById(issueId).select('reporterIds status category').lean();
+  if (!before) throw new ServiceError(404, 'Issue not found');
+  if (before.status === 'resolved') {
+    throw new ServiceError(409, 'This issue is already resolved; report it again if it is back');
+  }
+
+  const merged = await mergeReportInto(issueId, { reporterId, category: before.category, now: new Date() });
+  if (!merged) throw new ServiceError(409, 'This issue was just resolved; report it again if it is back');
+
+  const alreadyReported = before.reporterIds?.some((id) => String(id) === String(reporterId)) || false;
+  if (!alreadyReported) issueEvents.emit('issue:updated', merged, { reason: 'duplicate' });
+  return { issue: merged, alreadyReported };
+};
+
 // Every transition any role may perform (PRD §6.4). Per-role limits live in
 // config/permissions.js.
 const ALLOWED_TRANSITIONS = TRANSITIONS_BY_ROLE.admin;
@@ -179,15 +233,18 @@ const HISTORY_LIMIT = 50;
  *  - 403: transition exists but not for this role (e.g. dispatcher reopening)
  *  - 409: someone else changed the status first
  * Every change is appended to the issue's history (who / what / when).
+ *
+ * `resolutionImages` ([{ original, masked? }]) are "after" photos: accepted while resolving,
+ * or later on an issue that is already resolved. Reopening removes them.
  */
-const updateIssue = async (issueId, { status, assignedTo }, actor) => {
+const updateIssue = async (issueId, { status, assignedTo, note, resolutionImages = [] }, actor) => {
   if (!mongoose.isValidObjectId(issueId)) throw new ServiceError(400, 'Invalid issue id');
   if (!actor) throw new ServiceError(401, 'Authentication required');
-  if (status === undefined && assignedTo === undefined) {
+  if (status === undefined && assignedTo === undefined && !resolutionImages.length) {
     throw new ServiceError(400, 'Provide status and/or assignedTo');
   }
 
-  const current = await Issue.findById(issueId).select('status assignedTo region').lean();
+  const current = await Issue.findById(issueId).select('status assignedTo region resolutionImages').lean();
   // Outside your state looks the same as not existing: don't leak other states' issues.
   if (!current || !inJurisdiction(actor, current.region)) throw new ServiceError(404, 'Issue not found');
 
@@ -195,7 +252,25 @@ const updateIssue = async (issueId, { status, assignedTo }, actor) => {
   const set = { updatedAt: now };
   const reasons = [];
   const history = [];
-  const by = { by: actor._id, byName: actor.name, byRole: actor.role, at: now };
+  const resolving = status === 'resolved' && current.status !== 'resolved';
+  if (note !== undefined && !resolving) {
+    throw new ServiceError(400, 'note can only be sent when resolving an issue');
+  }
+  let change = null;
+
+  const staysResolved = current.status === 'resolved' && (status === undefined || status === 'resolved');
+  if (resolutionImages.length) {
+    if (!resolving && !staysResolved) {
+      throw new ServiceError(400, 'Photos of the fix can only be added when resolving, or to a resolved issue');
+    }
+    const existing = current.resolutionImages?.length || 0;
+    if (staysResolved && existing + resolutionImages.length > MAX_RESOLUTION_IMAGES) {
+      throw new ServiceError(400, `A resolved issue can have at most ${MAX_RESOLUTION_IMAGES} photos of the fix`);
+    }
+  }
+  const push = {};
+  let discardedImages = [];
+  const by ={ by: actor._id, byName: actor.name, byRole: actor.role, at: now };
 
   if (status !== undefined && status !== current.status) {
     if (!anyRoleCanTransition(current.status, status)) {
@@ -210,8 +285,22 @@ const updateIssue = async (issueId, { status, assignedTo }, actor) => {
     }
     set.status = status;
     set.resolvedAt = status === 'resolved' ? now : null;
+    // What was done, shown to the people who reported it. Cleared if it is reopened.
+    set.resolutionNote = status === 'resolved' ? note || null : null;
     reasons.push('status');
-    history.push({ action: 'status', from: current.status, to: status, ...by });
+    history.push({ action: 'status', from: current.status, to: status, ...(resolving && note && { note }), ...by });
+    change = { from: current.status, to: status };
+    if (resolving) {
+      set.resolutionImages = resolutionImages;
+    } else {
+      // Reopened or moved away from resolved: the old proof no longer applies.
+      set.resolutionImages = [];
+      discardedImages = current.resolutionImages || [];
+    }
+  } else if (resolutionImages.length) {
+    push.resolutionImages = { $each: resolutionImages };
+    reasons.push('photos');
+    history.push({ action: 'photos', to: String(resolutionImages.length), ...by });
   }
 
   if (assignedTo !== undefined) {
@@ -241,7 +330,8 @@ const updateIssue = async (issueId, { status, assignedTo }, actor) => {
   }
 
   const update = { $set: set };
-  if (history.length) update.$push = { history: { $each: history, $slice: -HISTORY_LIMIT } };
+  if (history.length) push.history = { $each: history, $slice: -HISTORY_LIMIT };
+  if (Object.keys(push).length) update.$push = push;
 
   const updated = await Issue.findOneAndUpdate(
     { _id: issueId, status: current.status },
@@ -252,8 +342,12 @@ const updateIssue = async (issueId, { status, assignedTo }, actor) => {
     .lean();
 
   if (!updated) throw new ServiceError(409, 'Issue was changed by someone else; refresh and retry');
+  discardedImages.forEach((img) => {
+    removeImage(img.original);
+    if (img.masked !== img.original) removeImage(img.masked);
+  });
 
-  issueEvents.emit('issue:updated', updated, { reason: reasons.join(',') });
+  issueEvents.emit('issue:updated', updated, { reason: reasons.join(','), ...(change && { change }) });
   return updated;
 };
 
@@ -286,7 +380,9 @@ module.exports = {
   ALLOWED_TRANSITIONS,
   resolveCategory,
   findNearbyOpen,
+  lockKeysFor,
   submitReport,
+  confirmIssue,
   updateIssue,
   refreshSeverityScores,
   withLiveSeverity,

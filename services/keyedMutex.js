@@ -1,7 +1,7 @@
 /**
  * Minimal keyed async mutex: callers with the same key run one at a time, callers
  * with different keys run in parallel. Used to make "check for duplicate, then
- * insert" atomic per issue category within this process.
+ * insert" atomic per (category, area) within this process.
  */
 
 const tails = new Map();
@@ -23,4 +23,14 @@ const withLock = async (key, fn) => {
   }
 };
 
-module.exports = { withLock };
+/**
+ * Hold several locks at once. Keys are de-duplicated and always taken in sorted
+ * order, so two callers with overlapping key sets can never deadlock.
+ */
+const withLocks = (keys, fn) => {
+  const ordered = [...new Set(keys)].sort();
+  const run = ordered.reduceRight((inner, key) => () => withLock(key, inner), fn);
+  return run();
+};
+
+module.exports = { withLock, withLocks };

@@ -27,6 +27,8 @@ export type StaffRef = { _id: string; name: string; email: string; role: Role };
 export type Permissions = {
   transitions: Partial<Record<IssueStatus, IssueStatus[]>>;
   canViewAllIssues: boolean;
+  /** Only citizens file reports; staff act on them. */
+  canReport: boolean;
   /** admin (own state) and superadmin */
   canManageStaff: boolean;
   /** superadmin only */
@@ -36,15 +38,24 @@ export type Permissions = {
 };
 
 export type HistoryEntry = {
-  action: "status" | "assignment";
+  action: "status" | "assignment" | "photos";
   from: string | null;
   to: string | null;
   toName?: string | null;
+  /** Resolution note, on the entry that resolved the issue. */
+  note?: string;
   by: string;
   byName?: string;
   byRole?: Role;
   at: string;
 };
+
+/**
+ * A report photo. `masked` has faces and number plates blurred (it equals `original`
+ * when there was nothing to blur). Staff get both; citizens get `masked` only, or
+ * `original` only when the server runs without photo masking.
+ */
+export type IssuePhoto = { original?: string; masked?: string };
 
 export type Issue = {
   _id: string;
@@ -62,6 +73,12 @@ export type Issue = {
   createdAt: string;
   updatedAt: string;
   resolvedAt?: string | null;
+  /** What staff did to fix it (shown to reporters). */
+  resolutionNote?: string | null;
+  /** Report photos: paths on the API server, see assetUrl(). */
+  images?: IssuePhoto[];
+  /** "After" photos added by staff as proof of the fix. */
+  resolutionImages?: IssuePhoto[];
   assignedTo?: StaffRef | null;
   reporterIds?: unknown[];
   reportedByMe?: boolean;
@@ -82,6 +99,34 @@ export type Stats = {
   avgResolutionHours: number | null;
   duplicatesMerged: number;
 };
+
+/** An open issue close to a point (GET /issues/nearby), with its distance in meters. */
+export type NearbyIssue = Issue & { distance: number };
+
+export type AnalyticsDay = {
+  date: string; // YYYY-MM-DD
+  issues: number;
+  reports: number;
+  resolved: number;
+  avgResolutionHours: number | null;
+};
+
+export type Analytics = {
+  days: number;
+  timezone: string;
+  from: string;
+  to: string;
+  totals: { issues: number; reports: number; resolved: number; avgResolutionHours: number | null };
+  daily: AnalyticsDay[];
+  byCategory: Record<IssueCategory, number>;
+  resolutionByCategory: Record<IssueCategory, { resolved: number; avgHours: number | null }>;
+  topTypes: { name: string; count: number }[];
+  /** Only when a superadmin looks at all states. */
+  byRegion: { region: string; regionName: string; active: number; created: number; resolved: number }[] | null;
+};
+
+/** Absolute URL of a file served by the API (report photos are stored as "/uploads/…"). */
+export const assetUrl = (path: string) => (/^https?:\/\//.test(path) ? path : `${API_URL}${path}`);
 
 export type ReportResult = {
   success: true;
@@ -118,15 +163,17 @@ type Options = { method?: string; body?: unknown; signal?: AbortSignal };
 
 export async function api<T>(path: string, { method = "GET", body, signal }: Options = {}): Promise<T> {
   let res: Response;
+  // FormData (file uploads) is sent as-is: the browser sets the multipart boundary.
+  const isForm = typeof FormData !== "undefined" && body instanceof FormData;
   try {
     res = await fetch(`${API_URL}/api/v1${path}`, {
       method,
       signal,
       headers: {
-        ...(body !== undefined && { "Content-Type": "application/json" }),
+        ...(body !== undefined && !isForm && { "Content-Type": "application/json" }),
         ...(authToken && { Authorization: `Bearer ${authToken}` }),
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
     });
   } catch (err) {
     if ((err as Error).name === "AbortError") throw err;

@@ -1,0 +1,65 @@
+# Whole stack on one machine:  docker compose up --build
+#   web  http://localhost:3000     api  http://localhost:5000     MongoDB, photo masking (internal)
+#
+# First run, create the demo accounts (superadmin / admin / dispatcher):
+#   docker compose run --rm -e NODE_ENV=development api node scripts/seed.js
+#
+# This file is for local demos. Before putting it on a server, set JWT_SECRET (and
+# SMTP_* if you want real email) in a .env file next to it: the fallback secret
+# below is public, so anyone could forge a login against a server that uses it.
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Blurs faces and number plates in report photos. Reachable only from the api
+  # container (no published port). The first build downloads PyTorch and takes a while.
+  masker:
+    build: ./masking
+    restart: unless-stopped
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+      masker:
+        condition: service_started
+    environment:
+      PORT: 5000
+      MONGO_URI: mongodb://mongo:27017/urbanops
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:3000}
+      JWT_SECRET: ${JWT_SECRET:-local-demo-only-change-me-before-deploying}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MASKING_URL: http://masker:8000
+    ports:
+      - "5000:5000"
+    volumes:
+      - uploads:/app/uploads
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5000}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+
+volumes:
+  mongo-data:
+  uploads:

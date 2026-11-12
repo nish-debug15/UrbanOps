@@ -10,42 +10,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import type { Role } from "@/lib/api";
-import { ROLE_SUMMARY, homeFor, isStaff, useAuth } from "@/lib/auth";
-import { useUserLocation } from "@/lib/location";
-
-/** "Where am I" readout: place name (reverse geocoded) + coordinates + accuracy. */
-function LocationBadge() {
-  const { status, position, place, refresh } = useUserLocation();
-
-  if (status === "ok" && position) {
-    return (
-      <div className="location-badge ok" title={`${position.lat.toFixed(6)}, ${position.lng.toFixed(6)}`}>
-        <span className="location-badge-label">📍 You are at</span>
-        <span className="location-badge-place">{place || "Resolving place…"}</span>
-        <span className="mono location-badge-coords">
-          {position.lat.toFixed(5)}, {position.lng.toFixed(5)} · ±{Math.round(position.accuracy)} m
-        </span>
-      </div>
-    );
-  }
-
-  const text: Record<string, string> = {
-    locating: "Finding your location…",
-    denied: "Location is blocked",
-    unavailable: "Location unavailable",
-    unsupported: "Browser can't share location",
-  };
-  return (
-    <div className={`location-badge ${status}`}>
-      <span className="location-badge-label">📍 {text[status]}</span>
-      {(status === "denied" || status === "unavailable") && (
-        <button type="button" className="location-button" onClick={refresh}>
-          {status === "denied" ? "Allow location in the address bar, then retry" : "Retry"}
-        </button>
-      )}
-    </div>
-  );
-}
+import { homeFor, isStaff, useAuth } from "@/lib/auth";
 
 type Props = {
   title: string;
@@ -60,7 +25,10 @@ const STAFF_NAV = [
   { href: "/livemap", label: "Live Map" },
 ];
 
-const MANAGER_NAV = [{ href: "/users", label: "Team" }];
+const MANAGER_NAV = [
+  { href: "/analytics", label: "Analytics" },
+  { href: "/users", label: "Team" },
+];
 const SUPERADMIN_NAV = [{ href: "/invites", label: "States & invites" }];
 
 const COMMON_NAV = [
@@ -69,7 +37,7 @@ const COMMON_NAV = [
 ];
 
 export default function AppShell({ title, roles, actions, children }: Props) {
-  const { status, user, logout } = useAuth();
+  const { status, user, permissions, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -100,7 +68,8 @@ export default function AppShell({ title, roles, actions, children }: Props) {
         ...(isStaff(user.role) ? STAFF_NAV : []),
         ...(user.role === "admin" || user.role === "superadmin" ? MANAGER_NAV : []),
         ...(user.role === "superadmin" ? SUPERADMIN_NAV : []),
-        ...COMMON_NAV,
+        // Reporting is for citizens; staff act on issues instead.
+        ...(permissions.canReport ? COMMON_NAV : []),
       ];
   const jurisdiction =
     user.role === "superadmin" ? "All states" : isStaff(user.role) ? user.regionName || "No state assigned" : null;
@@ -121,13 +90,10 @@ export default function AppShell({ title, roles, actions, children }: Props) {
         </nav>
 
         <div className="sidebar-bottom">
-          <LocationBadge />
           <div className="user-info">
             <span className="user-name">{user.name}</span>
             <span className={`role-pill ${user.role}`}>{user.role}</span>
             {jurisdiction && <span className="jurisdiction">🏛 {jurisdiction}</span>}
-            <span className="user-role">{ROLE_SUMMARY[user.role]}</span>
-            <span className="user-role">{user.email}</span>
             <button
               type="button"
               className="location-button logout-button"

@@ -11,6 +11,17 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
+# Build output (a stray `next build` run from the repo root lands here)
+.next/
+
+# Uploaded report photos (services/storage.js)
+uploads/
+
+# Photo masking service: local model weights and Python caches
+masking/models/
+masking/.venv/
+__pycache__/
+
 # OS files
 .DS_Store
 Thumbs.db

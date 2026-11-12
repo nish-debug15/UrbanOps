@@ -190,6 +190,7 @@ router.post('/:id/reset-password', requireRole('admin', 'superadmin'), async (re
     const password = temporaryPassword();
     target.passwordHash = await hashPassword(password);
     target.mustChangePassword = true;
+    target.passwordChangedAt = new Date(); // signs the account out everywhere
     await target.save();
 
     const delivery = await sendMail({

@@ -9,7 +9,7 @@
 
 const mongoose = require('mongoose');
 const User = require('../models/User');
-const { verifyToken } = require('../services/auth');
+const { verifyToken, issuedBeforePasswordChange } = require('../services/auth');
 
 const unauthorized = (res, error = 'Authentication required') =>
   res.status(401).json({ success: false, error });
@@ -35,6 +35,9 @@ const authenticate = async (req) => {
 
   const user = await User.findById(claims.sub).lean();
   if (!user) return { user: null, error: 'Account no longer exists' };
+  if (issuedBeforePasswordChange(claims, user)) {
+    return { user: null, error: 'Password was changed; please sign in again' };
+  }
   return { user, error: null };
 };
 

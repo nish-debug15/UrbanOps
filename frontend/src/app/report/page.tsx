@@ -2,19 +2,48 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { FormEvent, useCallback, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { UserPosition } from "@/components/map/UserLocation";
 import AppShell from "@/components/AppShell";
-import { api, errorMessage, type ReportResult } from "@/lib/api";
-import { REPORT_TYPES, issueRef } from "@/lib/format";
+import { api, errorMessage, type NearbyIssue, type ReportResult } from "@/lib/api";
+import { REPORT_TYPES, issueRef, issueTitle, timeAgo } from "@/lib/format";
 
 const LiveMap = dynamic(() => import("../LiveMap"), { ssr: false });
 
 type Point = { lat: number; lng: number; source: "gps" | "map"; accuracy?: number };
 
+// Must match the API (services/storage.js).
+const MAX_PHOTOS = 3;
+const MAX_PHOTO_MB = 5;
+const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+/** Open issues around the pin, so people can join one instead of describing it again. */
+function useNearby(point: Point | null) {
+  const [nearby, setNearby] = useState<NearbyIssue[]>([]);
+  // ~11 m steps: GPS jitter doesn't refetch.
+  const key = point ? `${point.lat.toFixed(4)},${point.lng.toFixed(4)}` : "";
+
+  useEffect(() => {
+    if (!key) return undefined;
+    const controller = new AbortController();
+    const [lat, lng] = key.split(",");
+    const timer = setTimeout(() => {
+      api<{ data: NearbyIssue[] }>(`/issues/nearby?lat=${lat}&lng=${lng}`, { signal: controller.signal })
+        .then((res) => setNearby(res.data))
+        .catch(() => undefined); // a hint only: the form works without it
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [key]);
+
+  return key ? nearby : [];
+}
+
 export default function ReportPage() {
   return (
-    <AppShell title="Report an issue">
+    <AppShell title="Report an issue" roles={["citizen"]}>
       <ReportForm />
     </AppShell>
   );
@@ -26,6 +55,42 @@ function ReportForm() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ReportResult | null>(null);
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const nearby = useNearby(point);
+
+  const previews = useMemo(() => photos.map((file) => ({ file, url: URL.createObjectURL(file) })), [photos]);
+  useEffect(() => () => previews.forEach((p) => URL.revokeObjectURL(p.url)), [previews]);
+
+  function addPhotos(files: FileList | null) {
+    if (!files) return;
+    const problems: string[] = [];
+    const accepted: File[] = [];
+    for (const file of Array.from(files)) {
+      if (!PHOTO_TYPES.includes(file.type)) problems.push(`${file.name} is not a JPEG, PNG or WebP image`);
+      else if (file.size > MAX_PHOTO_MB * 1024 * 1024) problems.push(`${file.name} is larger than ${MAX_PHOTO_MB} MB`);
+      else accepted.push(file);
+    }
+    const room = MAX_PHOTOS - photos.length;
+    if (accepted.length > room) problems.push(`You can attach up to ${MAX_PHOTOS} photos`);
+    setPhotos((list) => [...list, ...accepted.slice(0, Math.max(0, room))]);
+    setError(problems.length ? problems.join(". ") + "." : null);
+  }
+
+  async function confirmNearby(issue: NearbyIssue) {
+    setConfirming(issue._id);
+    setError(null);
+    try {
+      const res = await api<Omit<ReportResult, "merged">>(`/issues/${issue._id}/confirm`, { method: "POST" });
+      setResult({ ...res, merged: true });
+      setPhotos([]);
+      setPoint(null);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setConfirming(null);
+    }
+  }
 
   // GPS fixes from the map fill the pin automatically, until the user clicks the
   // map themselves (a manual pin is never overwritten).
@@ -68,17 +133,21 @@ function ReportForm() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api<ReportResult>("/issues", {
-        method: "POST",
-        body: {
-          subcategory: form.get("category"),
-          address: String(form.get("address") || "").trim() || undefined,
-          description: String(form.get("description") || "").trim() || undefined,
-          location: point,
-        },
-      });
+      // Multipart, so photos travel with the report in one request.
+      const body = new FormData();
+      body.set("subcategory", String(form.get("category") || ""));
+      const address = String(form.get("address") || "").trim();
+      const description = String(form.get("description") || "").trim();
+      if (address) body.set("address", address);
+      if (description) body.set("description", description);
+      body.set("lat", String(point.lat));
+      body.set("lng", String(point.lng));
+      photos.forEach((file) => body.append("photos", file));
+
+      const res = await api<ReportResult>("/issues", { method: "POST", body });
       setResult(res);
       formEl.reset();
+      setPhotos([]);
       setPoint(null);
     } catch (err) {
       setError(errorMessage(err));
@@ -141,6 +210,38 @@ function ReportForm() {
           </button>
         </div>
 
+        {nearby.length > 0 && (
+          <section className="nearby" aria-label="Issues already reported near this location">
+            <h2 className="nearby-title">Already reported near here</h2>
+            <ul className="nearby-list">
+              {nearby.slice(0, 4).map((issue) => (
+                <li key={issue._id}>
+                  <div>
+                    <strong>{issueTitle(issue)}</strong>
+                    <span className="mono muted small">
+                      {issue.distance} m away · {issue.reportCount} report{issue.reportCount === 1 ? "" : "s"} ·{" "}
+                      {timeAgo(issue.lastReportedAt)}
+                    </span>
+                    {issue.description && <span className="nearby-desc">{issue.description}</span>}
+                  </div>
+                  {issue.reportedByMe ? (
+                    <span className="mono muted small">You reported this</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-small"
+                      disabled={confirming !== null || busy}
+                      onClick={() => confirmNearby(issue)}
+                    >
+                      {confirming === issue._id ? "Adding…" : "I see this too"}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         <div className="form-group">
           <label htmlFor="address">Street / landmark (optional)</label>
           <input id="address" name="address" type="text" maxLength={200} placeholder="e.g. MG Road, near metro pillar 42" />
@@ -151,10 +252,44 @@ function ReportForm() {
           <textarea id="description" name="description" rows={4} maxLength={2000} placeholder="Briefly describe the problem…" />
         </div>
 
-        <p className="field-hint">
-          If someone already reported the same kind of issue within 100m, your report is added to theirs, which raises its
-          priority.
-        </p>
+        <div className="form-group">
+          <label htmlFor="photos">Photos (optional, up to {MAX_PHOTOS})</label>
+          {previews.length > 0 && (
+            <ul className="photo-previews">
+              {previews.map(({ file, url }, i) => (
+                <li key={url}>
+                  {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
+                  <img src={url} alt={`Selected photo ${i + 1}: ${file.name}`} />
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={`Remove ${file.name}`}
+                    onClick={() => setPhotos((list) => list.filter((f) => f !== file))}
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {photos.length < MAX_PHOTOS && (
+            <label className="upload-box" htmlFor="photos">
+              <input
+                id="photos"
+                type="file"
+                accept={PHOTO_TYPES.join(",")}
+                multiple
+                className="sr-only"
+                onChange={(e) => {
+                  addPhotos(e.target.files);
+                  e.target.value = ""; // allow picking the same file again after removing it
+                }}
+              />
+              <strong>Add a photo</strong>
+              <span>JPEG, PNG or WebP, up to {MAX_PHOTO_MB} MB each</span>
+            </label>
+          )}
+        </div>
 
         <button type="submit" className="submit-button" disabled={busy}>
           {busy ? "Submitting…" : "Submit report"}

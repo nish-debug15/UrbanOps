@@ -10,6 +10,7 @@ import { useEffect, useRef } from "react";
 import { MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import L from "@/lib/leaflet";
 import "leaflet.markercluster";
+import { HeatLayer } from "leaflet.heat";
 import "leaflet/dist/leaflet.css";
 import "leaflet.markercluster/dist/MarkerCluster.css";
 import UserLocation from "@/components/map/UserLocation";
@@ -130,6 +131,50 @@ function ClusterLayer({
   return null;
 }
 
+type HeatPoint = [number, number, number];
+// leaflet.heat ships types for Leaflet 2; this is the part of its API used here.
+type HeatLayerHandle = L.Layer & { setLatLngs: (points: HeatPoint[]) => void };
+
+/** Light → dark in one warm hue: darker means more, or more severe, issues. */
+const HEAT_GRADIENT = { 0.2: "#F2A65A", 0.5: "#E0702C", 0.8: "#B3300F", 1: "#6B1414" };
+
+/**
+ * Density of issues weighted by severity. Shows where problems concentrate when
+ * individual markers would be too many to read.
+ */
+function HeatmapLayer({ issues }: { issues: Issue[] }) {
+  const map = useMap();
+  const layerRef = useRef<HeatLayerHandle | null>(null);
+
+  useEffect(() => {
+    const layer = new HeatLayer([], {
+      radius: 34,
+      blur: 20,
+      minOpacity: 0.5, // readable over a busy street map
+      max: 70, // one hazard is clearly visible; two in one spot reach the darkest step
+      maxZoom: 13,
+      gradient: HEAT_GRADIENT,
+    }) as unknown as HeatLayerHandle;
+    layer.addTo(map);
+    layerRef.current = layer;
+    return () => {
+      map.removeLayer(layer);
+      layerRef.current = null;
+    };
+  }, [map]);
+
+  useEffect(() => {
+    layerRef.current?.setLatLngs(
+      issues.map((issue) => {
+        const [lng, lat] = issue.location.coordinates;
+        return [lat, lng, issue.severityScore];
+      })
+    );
+  }, [issues]);
+
+  return null;
+}
+
 /** Reports the visible bbox on load and after every pan/zoom. */
 function ViewportWatcher({
   onViewChange,
@@ -174,9 +219,11 @@ type Props = {
   selected: Issue | null;
   onSelect: (id: string | null) => void;
   onViewChange: (bbox: Bbox, zoom: number) => void;
+  /** Show a severity-weighted heatmap instead of individual markers. */
+  heat?: boolean;
 };
 
-export default function OpsMap({ issues, selected, onSelect, onViewChange }: Props) {
+export default function OpsMap({ issues, selected, onSelect, onViewChange, heat = false }: Props) {
   return (
     <div className="map-wrapper ops-map">
       <MapContainer center={BENGALURU} zoom={13} scrollWheelZoom style={{ height: "100%", width: "100%" }}>
@@ -184,13 +231,27 @@ export default function OpsMap({ issues, selected, onSelect, onViewChange }: Pro
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <ClusterLayer issues={issues} selectedId={selected?._id ?? null} onSelect={onSelect} />
+        {heat ? (
+          <HeatmapLayer issues={issues} />
+        ) : (
+          <ClusterLayer issues={issues} selectedId={selected?._id ?? null} onSelect={onSelect} />
+        )}
         <ViewportWatcher onViewChange={onViewChange} onBackgroundClick={() => onSelect(null)} />
         <FlyToSelected issue={selected} />
         <UserLocation autoCenter />
       </MapContainer>
 
-      <div className="map-legend">
+      {heat && (
+        <div className="map-legend">
+          <div className="legend-title">ISSUE DENSITY</div>
+          <div className="heat-ramp" aria-hidden="true" />
+          <div className="heat-ramp-labels">
+            <span>Fewer / milder</span>
+            <span>More / severe</span>
+          </div>
+        </div>
+      )}
+      <div className="map-legend" hidden={heat}>
         <div className="legend-title">SEVERITY</div>
         <div className="legend-item">
           <span className="legend-marker high"></span>High (50+)
@@ -201,7 +262,6 @@ export default function OpsMap({ issues, selected, onSelect, onViewChange }: Pro
         <div className="legend-item">
           <span className="legend-marker low"></span>Low (&lt;30)
         </div>
-        <div className="legend-note">Numbered squares = clusters, coloured by their most severe issue</div>
       </div>
     </div>
   );

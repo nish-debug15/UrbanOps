@@ -95,7 +95,6 @@ function Invites() {
       <section className="panel table-panel">
         <header className="panel-header">
           <h2 className="panel-title">States</h2>
-          <span className="mono muted small">from reports and staff</span>
         </header>
         <table className="users-table">
           <thead>
@@ -135,7 +134,6 @@ function Invites() {
       <section className="panel table-panel">
         <header className="panel-header">
           <h2 className="panel-title">Admin invites</h2>
-          <span className="mono muted small">latest 100</span>
         </header>
         <table className="users-table">
           <thead>

@@ -65,7 +65,6 @@ function ChangePasswordForm() {
         <div className="form-group">
           <label htmlFor="next">New password</label>
           <input id="next" name="next" type="password" autoComplete="new-password" minLength={8} maxLength={72} required />
-          <span className="field-hint">At least 8 characters.</span>
         </div>
         <div className="form-group">
           <label htmlFor="confirm">Repeat new password</label>

@@ -18,11 +18,6 @@ export default function Dashboard() {
     <AppShell
       title="Dashboard"
       roles={["dispatcher", "admin", "superadmin"]}
-      actions={
-        <Link href="/report" className="report-button">
-          [+] Report incident
-        </Link>
-      }
     >
       <DashboardBody />
     </AppShell>

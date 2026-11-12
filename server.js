@@ -14,6 +14,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 const { getJwtSecret } = require('./services/auth');
 const { startDecayTicker } = require('./services/decay');
 const { attachRealtime } = require('./realtime/socket');
+const { maskingEnabled } = require('./services/masking');
 
 const startServer = async () => {
   // Fail at boot (not on first login) if JWT_SECRET is missing in production.
@@ -32,6 +33,11 @@ const startServer = async () => {
   }
 
   startDecayTicker();
+  console.log(
+    maskingEnabled()
+      ? `[UrbanOps Server] Photo masking on (${process.env.MASKING_URL})`
+      : '[UrbanOps Server] Photo masking off: set MASKING_URL to blur faces and number plates in report photos.'
+  );
 
   const server = http.createServer(app);
   attachRealtime(server);

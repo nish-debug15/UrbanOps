@@ -12,7 +12,10 @@ import { ApiError, api, errorMessage, type Issue, type IssueStatus, type Paged, 
 import { useAuth } from "@/lib/auth";
 import { useIssueStream, type IssueEvent } from "@/lib/socket";
 import { STATUS_LABEL, issuePlace, issueRef, issueTitle, priorityOf, timeAgo } from "@/lib/format";
-import { ACTION_LABEL, allowedMoves, moveBody, moveDenial } from "@/lib/issues";
+import { ACTION_LABEL, allowedMoves, moveBody, moveDenial, patchIssue, type IssuePatch } from "@/lib/issues";
+import AfterPhotos from "@/components/AfterPhotos";
+import PhotoStrip from "@/components/PhotoStrip";
+import ResolveDialog from "@/components/ResolveDialog";
 
 const COLUMNS: IssueStatus[] = ["open", "dispatched", "resolved"];
 
@@ -42,6 +45,7 @@ function Board() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<IssueStatus | null>(null);
+  const [resolving, setResolving] = useState<Issue | null>(null);
 
   const load = useCallback((signal?: AbortSignal) => {
     fetchBoard(signal)
@@ -76,18 +80,19 @@ function Board() {
     return byStatus;
   }, [issues]);
 
-  const update = async (issue: Issue, body: { status?: IssueStatus; assignedTo?: string | null }) => {
+  const update = async (issue: Issue, body: IssuePatch, photos: File[] = []) => {
     setBusy(issue._id);
     setError(null);
     try {
-      const res = await api<{ issue: Issue }>(`/issues/${issue._id}`, { method: "PATCH", body });
-      setIssues((list) => list.map((i) => (i._id === issue._id ? res.issue : i)));
+      const updated = await patchIssue(issue._id, body, photos);
+      setIssues((list) => list.map((i) => (i._id === issue._id ? updated : i)));
     } catch (err) {
       setError(errorMessage(err));
       // Someone else changed it first: pull the latest board.
       if (err instanceof ApiError && err.status === 409) load();
     } finally {
       setBusy(null);
+      setResolving(null); // close the dialog either way, so an error is visible
     }
   };
 
@@ -98,24 +103,32 @@ function Board() {
       setError(denial);
       return;
     }
+    // Resolving asks what was done first; the note goes to the reporters.
+    if (status === "resolved") {
+      setError(null);
+      setResolving(issue);
+      return;
+    }
     update(issue, moveBody(issue, status, user?._id));
   };
 
   return (
     <>
       <div className="board-toolbar">
-        <span className="mono muted">
-          {user?.role === "superadmin"
-            ? "Superadmin: all states. You can dispatch, resolve, close without dispatch, and reopen anywhere."
-            : user?.role === "admin"
-              ? `${user.regionName}: you can dispatch, resolve, close without dispatch, and reopen.`
-              : `${user?.regionName ?? "Your state"}: you can dispatch, assign, undo a dispatch, and resolve. Closing without dispatch and reopening need your state admin.`}
-        </span>
+        <span />
         <span className={`live-badge ${live ? "on" : ""}`}>
           <span className="live-dot" /> {live ? "LIVE" : "OFFLINE"}
         </span>
       </div>
       {error && <div className="alert error">{error}</div>}
+      {resolving && (
+        <ResolveDialog
+          issue={resolving}
+          busy={busy === resolving._id}
+          onCancel={() => setResolving(null)}
+          onConfirm={(note, photos) => update(resolving, moveBody(resolving, "resolved", user?._id, note), photos)}
+        />
+      )}
 
       <div className="kanban">
         {COLUMNS.map((status) => (
@@ -163,6 +176,15 @@ function Board() {
                     </div>
                     <div className="kanban-place">{issuePlace(issue)}</div>
                     {issue.description && <p className="kanban-desc">{issue.description}</p>}
+                    <PhotoStrip images={issue.images} max={3} />
+                    {status === "resolved" && issue.resolutionNote && (
+                      <p className="resolution-note">
+                        <strong>Done:</strong> {issue.resolutionNote}
+                      </p>
+                    )}
+                    {status === "resolved" && (
+                      <AfterPhotos issue={issue} busy={busy === issue._id} onAdd={(files) => update(issue, {}, files)} onError={setError} />
+                    )}
 
                     {status !== "resolved" && (
                       <label className="assign-row">

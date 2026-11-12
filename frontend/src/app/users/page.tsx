@@ -11,7 +11,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { api, errorMessage, type Paged, type Role, type User } from "@/lib/api";
-import { MANAGER_ROLES, ROLE_SUMMARY, useAuth } from "@/lib/auth";
+import { MANAGER_ROLES, useAuth } from "@/lib/auth";
 import { StateOptions, copyText } from "@/lib/regions";
 
 type Row = User & { createdAt?: string };
@@ -137,12 +137,6 @@ function Team() {
 
   return (
     <>
-      <p className="mono muted small page-intro">
-        {isSuper
-          ? "You see every account in every state. Create state admins from “States & invites”."
-          : `Staff of ${me?.regionName}. You add dispatchers here; they set their own password at first sign-in.`}
-      </p>
-
       <AddDispatcher
         isSuper={isSuper}
         onCreated={(c) => {
@@ -264,15 +258,6 @@ function Team() {
           </button>
         </div>
       )}
-
-      <div className="role-legend">
-        {(["dispatcher", "admin", "superadmin"] as Role[]).map((r) => (
-          <div key={r} className={`role-card ${r}`}>
-            <span className={`role-pill ${r}`}>{r}</span>
-            <span className="small">{ROLE_SUMMARY[r]}</span>
-          </div>
-        ))}
-      </div>
     </>
   );
 }

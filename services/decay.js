@@ -9,6 +9,13 @@ const { isDbReady } = require('../config/db');
 const DEFAULT_INTERVAL_MS = Number(process.env.SEVERITY_TICK_MS) || 10 * 60 * 1000;
 
 const startDecayTicker = (intervalMs = DEFAULT_INTERVAL_MS) => {
+  // When running several API instances, one ticker is enough: set DECAY_TICKER=off
+  // on the others. (Running it everywhere is harmless, just redundant writes.)
+  if (process.env.DECAY_TICKER === 'off') {
+    console.log('[Severity] Decay ticker disabled on this instance (DECAY_TICKER=off)');
+    return () => undefined;
+  }
+
   const tick = async () => {
     if (!isDbReady()) return;
     try {

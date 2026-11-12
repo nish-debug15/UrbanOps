@@ -20,9 +20,10 @@ const ngeohash = require('ngeohash');
 const mongoose = require('mongoose');
 
 const User = require('../models/User');
-const { verifyToken } = require('../services/auth');
+const { verifyToken, issuedBeforePasswordChange } = require('../services/auth');
 const { issueEvents } = require('../services/events');
 const { withLiveSeverity } = require('../services/issues');
+const { publicImages } = require('../services/masking');
 const { corsOptions } = require('../config/cors');
 const { GEOHASH_ROOM_PRECISION, STAFF_ROLES } = require('../config/constants');
 
@@ -49,6 +50,8 @@ const publicView = (issue) => {
   delete view.assignedTo;
   delete view.history;
   delete view.__v;
+  view.images = publicImages(view.images);
+  view.resolutionImages = publicImages(view.resolutionImages);
   return view;
 };
 
@@ -93,8 +96,9 @@ const attachRealtime = (httpServer) => {
       if (!token) return next(new Error('Authentication required'));
       const claims = verifyToken(token);
       if (!mongoose.isValidObjectId(claims.sub)) return next(new Error('Invalid token'));
-      const user = await User.findById(claims.sub).select('name role region mustChangePassword').lean();
+      const user = await User.findById(claims.sub).select('name role region mustChangePassword passwordChangedAt').lean();
       if (!user) return next(new Error('Account no longer exists'));
+      if (issuedBeforePasswordChange(claims, user)) return next(new Error('Password was changed; please sign in again'));
       socket.data.user = user;
       return next();
     } catch (err) {

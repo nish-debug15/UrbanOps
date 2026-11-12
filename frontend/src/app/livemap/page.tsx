@@ -12,6 +12,9 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
+import AfterPhotos from "@/components/AfterPhotos";
+import PhotoStrip from "@/components/PhotoStrip";
+import ResolveDialog from "@/components/ResolveDialog";
 import {
   ApiError,
   api,
@@ -93,6 +96,8 @@ function OpsMapScreen() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[] | null>(null);
+  const [resolving, setResolving] = useState(false);
+  const [heat, setHeat] = useState(false);
   const selectedIdRef = useRef<string | null>(null);
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -194,12 +199,12 @@ function OpsMapScreen() {
     [issues]
   );
 
-  const applyPatch = async (issue: Issue, body: IssuePatch) => {
+  const applyPatch = async (issue: Issue, body: IssuePatch, photos: File[] = []) => {
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      const updated = await patchIssue(issue._id, body);
+      const updated = await patchIssue(issue._id, body, photos);
       setPinned(updated);
       if (updated.history) setHistory(updated.history);
       setIssues((list) => {
@@ -219,6 +224,7 @@ function OpsMapScreen() {
       }
     } finally {
       setBusy(false);
+      setResolving(false); // close the dialog either way, so an error is visible
     }
   };
 
@@ -280,6 +286,15 @@ function OpsMapScreen() {
           </select>
         </label>
 
+        <div className="filter-group" role="group" aria-label="Map layer">
+          <button type="button" className={`chip ${heat ? "" : "on"}`} aria-pressed={!heat} onClick={() => setHeat(false)}>
+            Markers
+          </button>
+          <button type="button" className={`chip ${heat ? "on" : ""}`} aria-pressed={heat} onClick={() => setHeat(true)}>
+            Heatmap
+          </button>
+        </div>
+
         <div className="filter-status">
           <span className="mono muted">
             {loading ? "Loading…" : `${issues.length}${total > issues.length ? ` of ${total}` : ""} in view`}
@@ -303,7 +318,7 @@ function OpsMapScreen() {
 
       <div className={`ops-layout ${selected ? "with-panel" : ""}`}>
         <div className="panel ops-map-panel">
-          <OpsMap issues={issues} selected={selected} onSelect={select} onViewChange={handleViewChange} />
+          <OpsMap issues={issues} selected={selected} onSelect={select} onViewChange={handleViewChange} heat={heat} />
         </div>
 
         {selected && (
@@ -315,11 +330,24 @@ function OpsMapScreen() {
             moves={allowedMoves(permissions, selected.status)}
             history={history}
             onClose={() => select(null)}
-            onMove={(status) => applyPatch(selected, moveBody(selected, status, user?._id))}
+            onMove={(status) =>
+              status === "resolved" ? setResolving(true) : applyPatch(selected, moveBody(selected, status, user?._id))
+            }
             onAssign={(assignedTo) => applyPatch(selected, { assignedTo })}
+            onAddPhotos={(files) => applyPatch(selected, {}, files)}
+            onError={setError}
           />
         )}
       </div>
+
+      {resolving && selected && (
+        <ResolveDialog
+          issue={selected}
+          busy={busy}
+          onCancel={() => setResolving(false)}
+          onConfirm={(note, photos) => applyPatch(selected, moveBody(selected, "resolved", user?._id, note), photos)}
+        />
+      )}
     </>
   );
 }
@@ -334,6 +362,8 @@ function IssuePanel({
   onClose,
   onMove,
   onAssign,
+  onAddPhotos,
+  onError,
 }: {
   issue: Issue;
   staff: StaffRef[];
@@ -344,6 +374,8 @@ function IssuePanel({
   onClose: () => void;
   onMove: (status: IssueStatus) => void;
   onAssign: (id: string | null) => void;
+  onAddPhotos: (files: File[]) => void;
+  onError: (message: string | null) => void;
 }) {
   const priority = priorityOf(issue.severityScore);
   const base = BASE_WEIGHT[issue.category];
@@ -412,7 +444,16 @@ function IssuePanel({
               <dd>{issue.description}</dd>
             </>
           )}
+          {issue.resolutionNote && (
+            <>
+              <dt>What was done</dt>
+              <dd>{issue.resolutionNote}</dd>
+            </>
+          )}
         </dl>
+
+        <PhotoStrip images={issue.images} size="large" max={6} />
+        {issue.status === "resolved" && <AfterPhotos issue={issue} busy={busy} onAdd={onAddPhotos} onError={onError} size="large" />}
 
         {issue.status !== "resolved" && (
           <label className="form-group panel-field">
